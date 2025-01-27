@@ -2,18 +2,17 @@ package io.github.karinelucion.quarkussocial.rest;
 
 import io.github.karinelucion.quarkussocial.domain.model.Post;
 import io.github.karinelucion.quarkussocial.domain.model.User;
+import io.github.karinelucion.quarkussocial.domain.repository.FollowerRepository;
 import io.github.karinelucion.quarkussocial.domain.repository.PostRepository;
 import io.github.karinelucion.quarkussocial.domain.repository.UserRepository;
 import io.github.karinelucion.quarkussocial.rest.dto.CreatePostRequest;
 import io.github.karinelucion.quarkussocial.rest.dto.PostResponse;
-import io.quarkus.hibernate.orm.panache.PanacheQuery;
 import io.quarkus.panache.common.Sort;
 
 import javax.transaction.Transactional;
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 
 @Path("/users/{userId}/posts")
@@ -22,10 +21,14 @@ import java.util.stream.Collectors;
 public class PostResource {
     private UserRepository userRepository;
     private PostRepository repository;
+    private FollowerRepository followerRepository;
 
-    public PostResource(UserRepository userRepository, PostRepository postRepository){
+    public PostResource(UserRepository userRepository,
+                        PostRepository postRepository,
+                        FollowerRepository followerRepository){
         this.userRepository = userRepository;
         this.repository = postRepository;
+        this.followerRepository = followerRepository;
     }
 
     @POST
@@ -45,11 +48,30 @@ public class PostResource {
     }
 
     @GET
-    public Response listPosts(@PathParam("userId") Long userId){
+    public Response listPosts(@PathParam("userId") Long userId, @HeaderParam("followerId") Long followerId){
         User user = userRepository.findById(userId);
         if (user == null){
             return Response.status(Response.Status.NOT_FOUND).build();
         }
+
+        if (followerId == null){
+            return Response.status(Response.Status.BAD_REQUEST).entity("You forgot the header followerId").build();
+        }
+
+        User follower = userRepository.findById(followerId);
+
+        if (follower == null){
+            return Response.status(Response.Status.BAD_REQUEST).entity("Inexistent followerId").build();
+        }
+
+        boolean follows = followerRepository.follows(follower, user);
+
+        if(!follows){
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity("You can't see these posts")
+                    .build();
+        }
+
 
         var query = repository.find(
                 "user",
